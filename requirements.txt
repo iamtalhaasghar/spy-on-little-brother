@@ -1,0 +1,3 @@
+mss
+discord-webhook
+python-dotenv
